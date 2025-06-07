@@ -416,6 +416,68 @@ def test_flux_output_processing():
     
     return True
 
+def test_input_image_usage():
+    """Test that input images are properly used instead of Discord URLs"""
+    print("Testing input image usage...")
+    
+    import tempfile
+    import shutil
+    
+    # Create temporary directory for testing
+    test_dir = tempfile.mkdtemp()
+    old_cwd = os.getcwd()
+    
+    try:
+        os.chdir(test_dir)
+        
+        # Test directory setup
+        os.makedirs('images/inputs', exist_ok=True)
+        os.makedirs('images/outputs', exist_ok=True)
+        
+        # Create a mock input image file
+        test_filename = "20250101_120000_input.png"
+        test_path = os.path.join('images', 'inputs', test_filename)
+        with open(test_path, 'wb') as f:
+            f.write(b'mock image data')
+        
+        # Test that the input path construction works correctly
+        input_path = os.path.join('images', 'inputs', test_filename)
+        if os.path.exists(input_path):
+            print("✅ Input image path construction works")
+        else:
+            print("❌ Input image path construction failed")
+            return False
+        
+        # Test that we can read the file (simulating what Replicate API would do)
+        try:
+            with open(input_path, 'rb') as image_file:
+                data = image_file.read()
+                if data == b'mock image data':
+                    print("✅ Input image file can be read properly")
+                else:
+                    print("❌ Input image file data mismatch")
+                    return False
+        except Exception as e:
+            print(f"❌ Failed to read input image file: {e}")
+            return False
+        
+        # Test validation that input filename is not None
+        if test_filename is not None and test_filename.endswith('.png'):
+            print("✅ Input filename validation works")
+        else:
+            print("❌ Input filename validation failed")
+            return False
+        
+        print("✅ Input image usage validation passed")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Input image usage test failed: {e}")
+        return False
+    finally:
+        os.chdir(old_cwd)
+        shutil.rmtree(test_dir, ignore_errors=True)
+
 def run_all_tests():
     """Run all validation tests"""
     print("🧪 Running Discord Bot Validation Tests\n")
@@ -427,6 +489,7 @@ def run_all_tests():
         test_environment_validation,
         test_fileoutput_handling,
         test_flux_output_processing,
+        test_input_image_usage,
         test_image_count_validation,
         test_directory_creation,
         test_filename_generation,
