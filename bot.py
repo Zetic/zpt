@@ -5,6 +5,7 @@ import replicate
 from discord.ext import commands
 from dotenv import load_dotenv
 import aiohttp
+from datetime import datetime
 
 # Load environment variables
 load_dotenv()
@@ -18,6 +19,14 @@ class FluxBot(commands.Bot):
         
         # Configure Replicate
         self.replicate_client = replicate.Client(api_token=os.getenv('REPLICATE_API_TOKEN'))
+        
+        # Create directory structure for local storage
+        self.setup_directories()
+    
+    def setup_directories(self):
+        """Create required directory structure for image storage"""
+        os.makedirs('images/inputs', exist_ok=True)
+        os.makedirs('images/outputs', exist_ok=True)
     
     async def on_ready(self):
         print(f'{self.user} has connected to Discord!')
@@ -46,16 +55,22 @@ class FluxBot(commands.Bot):
                 await message.reply("❌ The message you're replying to doesn't contain any images.")
                 return
             
-            # Find the first image attachment
-            image_attachment = None
+            # Find all image attachments
+            image_attachments = []
             for attachment in referenced_message.attachments:
                 if any(attachment.filename.lower().endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.webp']):
-                    image_attachment = attachment
-                    break
+                    image_attachments.append(attachment)
             
-            if not image_attachment:
+            # Validate exactly one image as per requirements
+            if len(image_attachments) == 0:
                 await message.reply("❌ No valid image found in the referenced message.")
                 return
+            elif len(image_attachments) > 1:
+                await message.reply("❌ Please reply to a message with exactly one image. Multiple images are not supported.")
+                return
+            
+            # Use the single image attachment
+            image_attachment = image_attachments[0]
             
             # Extract the modification prompt from the reply (excluding the bot mention)
             prompt = message.content
@@ -71,29 +86,47 @@ class FluxBot(commands.Bot):
             # Send initial processing message
             processing_msg = await message.reply("🎨 Processing your image modification request...")
             
-            # Download the image
-            async with aiohttp.ClientSession() as session:
-                async with session.get(image_attachment.url) as resp:
-                    if resp.status == 200:
-                        image_data = await resp.read()
-                        image_file = io.BytesIO(image_data)
-                    else:
-                        await processing_msg.edit(content="❌ Failed to download the image.")
-                        return
+            # Save input image locally and use Discord URL directly
+            input_filename = await self.save_input_image(image_attachment)
             
-            # Use Flux Kontext for image modification
-            await self.modify_image_with_flux(processing_msg, image_file, prompt, image_attachment.filename)
+            # Use Flux Kontext for image modification with Discord URL
+            await self.modify_image_with_flux(processing_msg, image_attachment.url, prompt, image_attachment.filename, input_filename)
             
         except Exception as e:
             print(f"Error in handle_image_modification: {e}")
             await message.reply(f"❌ An error occurred while processing your request: {str(e)}")
     
-    async def modify_image_with_flux(self, processing_msg, image_file, prompt, original_filename):
+    async def save_input_image(self, attachment):
+        """Save input image locally and return filename"""
+        try:
+            # Generate timestamp-based filename
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            file_extension = os.path.splitext(attachment.filename)[1]
+            input_filename = f"{timestamp}_input{file_extension}"
+            input_path = os.path.join('images', 'inputs', input_filename)
+            
+            # Download and save the image
+            async with aiohttp.ClientSession() as session:
+                async with session.get(attachment.url) as resp:
+                    if resp.status == 200:
+                        image_data = await resp.read()
+                        with open(input_path, 'wb') as f:
+                            f.write(image_data)
+                        print(f"Saved input image: {input_path}")
+                        return input_filename
+                    else:
+                        print(f"Failed to download input image: {resp.status}")
+                        return None
+        except Exception as e:
+            print(f"Error saving input image: {e}")
+            return None
+    
+    async def modify_image_with_flux(self, processing_msg, image_url, prompt, original_filename, input_filename):
         """Use Flux Kontext to modify the image"""
         try:
-            # Prepare the input for Flux Kontext
+            # Prepare the input for Flux Kontext using Discord URL directly
             input_data = {
-                "image": image_file,
+                "image": image_url,  # Use Discord CDN URL directly
                 "prompt": prompt,
                 "num_inference_steps": 20,
                 "guidance_scale": 3.5,
@@ -110,12 +143,15 @@ class FluxBot(commands.Bot):
                 input=input_data
             )
             
-            # Download the generated image
+            # Download and save the generated image
             if output:
                 async with aiohttp.ClientSession() as session:
                     async with session.get(str(output)) as resp:
                         if resp.status == 200:
                             modified_image_data = await resp.read()
+                            
+                            # Save output image locally
+                            output_filename = await self.save_output_image(modified_image_data, original_filename)
                             
                             # Create discord file and send
                             modified_filename = f"modified_{original_filename}"
@@ -125,7 +161,7 @@ class FluxBot(commands.Bot):
                             )
                             
                             await processing_msg.edit(
-                                content=f"✅ Here's your modified image!\n**Prompt:** {prompt}",
+                                content=f"✅ Here's your modified image!\n**Prompt:** {prompt}\n**Input saved as:** {input_filename}\n**Output saved as:** {output_filename}",
                                 attachments=[discord_file]
                             )
                         else:
@@ -136,6 +172,24 @@ class FluxBot(commands.Bot):
         except Exception as e:
             print(f"Error in modify_image_with_flux: {e}")
             await processing_msg.edit(content=f"❌ Error generating image: {str(e)}")
+    
+    async def save_output_image(self, image_data, original_filename):
+        """Save output image locally and return filename"""
+        try:
+            # Generate timestamp-based filename
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            base_name = os.path.splitext(original_filename)[0]
+            output_filename = f"{timestamp}_output_{base_name}.png"
+            output_path = os.path.join('images', 'outputs', output_filename)
+            
+            # Save the image
+            with open(output_path, 'wb') as f:
+                f.write(image_data)
+            print(f"Saved output image: {output_path}")
+            return output_filename
+        except Exception as e:
+            print(f"Error saving output image: {e}")
+            return None
 
 # Bot commands
 @commands.command(name='help_flux')

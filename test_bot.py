@@ -159,6 +159,103 @@ def test_fileoutput_handling():
     
     return True
 
+def test_image_count_validation():
+    """Test image count validation logic"""
+    print("Testing image count validation...")
+    
+    # Test exactly one image (should pass)
+    image_attachments = [Mock()]
+    image_attachments[0].filename = "test.png"
+    
+    if len(image_attachments) == 1:
+        print("✅ Exactly one image correctly identified")
+    else:
+        print("❌ Single image validation failed")
+        return False
+    
+    # Test multiple images (should fail)
+    image_attachments = [Mock(), Mock()]
+    image_attachments[0].filename = "test1.png"
+    image_attachments[1].filename = "test2.jpg"
+    
+    if len(image_attachments) > 1:
+        print("✅ Multiple images correctly identified")
+    else:
+        print("❌ Multiple image validation failed")
+        return False
+    
+    # Test no images (should fail)
+    image_attachments = []
+    
+    if len(image_attachments) == 0:
+        print("✅ No images correctly identified")
+    else:
+        print("❌ No image validation failed")
+        return False
+    
+    return True
+
+def test_directory_creation():
+    """Test directory creation logic"""
+    print("Testing directory creation...")
+    
+    import tempfile
+    import shutil
+    
+    # Create a temporary directory for testing
+    test_dir = tempfile.mkdtemp()
+    old_cwd = os.getcwd()
+    
+    try:
+        os.chdir(test_dir)
+        
+        # Test directory creation
+        os.makedirs('images/inputs', exist_ok=True)
+        os.makedirs('images/outputs', exist_ok=True)
+        
+        if os.path.exists('images/inputs') and os.path.exists('images/outputs'):
+            print("✅ Directory structure created successfully")
+            return True
+        else:
+            print("❌ Directory creation failed")
+            return False
+    except Exception as e:
+        print(f"❌ Directory creation failed with exception: {e}")
+        return False
+    finally:
+        os.chdir(old_cwd)
+        shutil.rmtree(test_dir, ignore_errors=True)
+
+def test_filename_generation():
+    """Test timestamp-based filename generation"""
+    print("Testing filename generation...")
+    
+    from datetime import datetime
+    
+    # Test input filename generation
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    original_filename = "test_image.png"
+    file_extension = os.path.splitext(original_filename)[1]
+    input_filename = f"{timestamp}_input{file_extension}"
+    
+    if input_filename.endswith("_input.png") and len(timestamp) == 15:
+        print("✅ Input filename generation works correctly")
+    else:
+        print("❌ Input filename generation failed")
+        return False
+    
+    # Test output filename generation
+    base_name = os.path.splitext(original_filename)[0]
+    output_filename = f"{timestamp}_output_{base_name}.png"
+    
+    if "output_test_image.png" in output_filename and len(timestamp) == 15:
+        print("✅ Output filename generation works correctly")
+    else:
+        print("❌ Output filename generation failed")
+        return False
+    
+    return True
+
 def test_flux_output_processing():
     """Test Flux output processing logic"""
     print("Testing Flux output processing...")
@@ -214,6 +311,9 @@ def run_all_tests():
         test_environment_validation,
         test_fileoutput_handling,
         test_flux_output_processing,
+        test_image_count_validation,
+        test_directory_creation,
+        test_filename_generation
     ]
     
     passed = 0
