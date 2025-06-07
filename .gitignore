@@ -43,3 +43,13 @@ venv.bak/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local image storage (keep directories, ignore files)
+images/inputs/*.png
+images/inputs/*.jpg
+images/inputs/*.jpeg
+images/inputs/*.webp
+images/outputs/*.png
+images/outputs/*.jpg
+images/outputs/*.jpeg
+images/outputs/*.webp

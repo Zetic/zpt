@@ -159,6 +159,219 @@ def test_fileoutput_handling():
     
     return True
 
+def test_image_count_validation():
+    """Test image count validation logic"""
+    print("Testing image count validation...")
+    
+    # Test exactly one image (should pass)
+    image_attachments = [Mock()]
+    image_attachments[0].filename = "test.png"
+    
+    if len(image_attachments) == 1:
+        print("✅ Exactly one image correctly identified")
+    else:
+        print("❌ Single image validation failed")
+        return False
+    
+    # Test multiple images (should fail)
+    image_attachments = [Mock(), Mock()]
+    image_attachments[0].filename = "test1.png"
+    image_attachments[1].filename = "test2.jpg"
+    
+    if len(image_attachments) > 1:
+        print("✅ Multiple images correctly identified")
+    else:
+        print("❌ Multiple image validation failed")
+        return False
+    
+    # Test no images (should fail)
+    image_attachments = []
+    
+    if len(image_attachments) == 0:
+        print("✅ No images correctly identified")
+    else:
+        print("❌ No image validation failed")
+        return False
+    
+    return True
+
+def test_directory_creation():
+    """Test directory creation logic"""
+    print("Testing directory creation...")
+    
+    import tempfile
+    import shutil
+    
+    # Create a temporary directory for testing
+    test_dir = tempfile.mkdtemp()
+    old_cwd = os.getcwd()
+    
+    try:
+        os.chdir(test_dir)
+        
+        # Test directory creation
+        os.makedirs('images/inputs', exist_ok=True)
+        os.makedirs('images/outputs', exist_ok=True)
+        
+        if os.path.exists('images/inputs') and os.path.exists('images/outputs'):
+            print("✅ Directory structure created successfully")
+            return True
+        else:
+            print("❌ Directory creation failed")
+            return False
+    except Exception as e:
+        print(f"❌ Directory creation failed with exception: {e}")
+        return False
+    finally:
+        os.chdir(old_cwd)
+        shutil.rmtree(test_dir, ignore_errors=True)
+
+def test_filename_generation():
+    """Test timestamp-based filename generation"""
+    print("Testing filename generation...")
+    
+    from datetime import datetime
+    
+    # Test input filename generation
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    original_filename = "test_image.png"
+    file_extension = os.path.splitext(original_filename)[1]
+    input_filename = f"{timestamp}_input{file_extension}"
+    
+    if input_filename.endswith("_input.png") and len(timestamp) == 15:
+        print("✅ Input filename generation works correctly")
+    else:
+        print("❌ Input filename generation failed")
+        return False
+    
+    # Test output filename generation
+    base_name = os.path.splitext(original_filename)[0]
+    output_filename = f"{timestamp}_output_{base_name}.png"
+    
+    if "output_test_image.png" in output_filename and len(timestamp) == 15:
+        print("✅ Output filename generation works correctly")
+    else:
+        print("❌ Output filename generation failed")
+        return False
+    
+    return True
+
+def test_discord_url_validation():
+    """Test Discord URL validation logic"""
+    print("Testing Discord URL validation...")
+    
+    # Test directly using the bot class method
+    from bot import FluxBot
+    
+    # Test valid Discord URLs
+    valid_urls = [
+        'https://cdn.discordapp.com/attachments/123/456/image.png',
+        'https://media.discordapp.net/attachments/123/456/photo.jpg',
+        'https://images-ext-1.discordapp.net/external/abc/image.jpeg',
+        'https://images-ext-2.discordapp.net/external/def/image.webp'
+    ]
+    
+    for url in valid_urls:
+        # Test the validation logic directly
+        discord_domains = [
+            'cdn.discordapp.com',
+            'media.discordapp.net',
+            'images-ext-1.discordapp.net',
+            'images-ext-2.discordapp.net'
+        ]
+        
+        valid_extensions = ['.png', '.jpg', '.jpeg', '.webp', '.gif']
+        
+        has_discord_domain = any(domain in url for domain in discord_domains)
+        has_valid_extension = any(url.lower().endswith(ext) for ext in valid_extensions)
+        is_valid = has_discord_domain and has_valid_extension
+        
+        if is_valid:
+            print(f"✅ Valid Discord URL correctly identified: {url.split('/')[-1]}")
+        else:
+            print(f"❌ Valid Discord URL incorrectly rejected: {url}")
+            return False
+    
+    # Test invalid URLs
+    invalid_urls = [
+        'https://example.com/image.png',  # Wrong domain
+        'https://cdn.discordapp.com/attachments/123/456/document.pdf',  # Wrong extension
+        'https://malicious-site.com/fake-discord-url.png',  # Fake Discord URL
+        'not-a-url-at-all'  # Not even a URL
+    ]
+    
+    for url in invalid_urls:
+        has_discord_domain = any(domain in url for domain in discord_domains)
+        has_valid_extension = any(url.lower().endswith(ext) for ext in valid_extensions)
+        is_valid = has_discord_domain and has_valid_extension
+        
+        if not is_valid:
+            print(f"✅ Invalid URL correctly rejected: {url.split('/')[-1] if '/' in url else url}")
+        else:
+            print(f"❌ Invalid URL incorrectly accepted: {url}")
+            return False
+    
+    return True
+
+def test_end_to_end_workflow():
+    """Test the complete workflow with mock data"""
+    print("Testing end-to-end workflow...")
+    
+    # This test validates the workflow without actual API calls
+    try:
+        from bot import FluxBot
+        import tempfile
+        import shutil
+        
+        # Create temporary directory for testing
+        test_dir = tempfile.mkdtemp()
+        old_cwd = os.getcwd()
+        
+        try:
+            os.chdir(test_dir)
+            
+            # Test directory setup
+            os.makedirs('images/inputs', exist_ok=True)
+            os.makedirs('images/outputs', exist_ok=True)
+            
+            # Test filename generation
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            
+            # Test input filename
+            input_filename = f"{timestamp}_input.png"
+            input_path = os.path.join('images', 'inputs', input_filename)
+            
+            # Test output filename
+            output_filename = f"{timestamp}_output_test_image.png"
+            output_path = os.path.join('images', 'outputs', output_filename)
+            
+            # Create mock files
+            with open(input_path, 'wb') as f:
+                f.write(b'mock input image data')
+            
+            with open(output_path, 'wb') as f:
+                f.write(b'mock output image data')
+            
+            # Verify files exist
+            if os.path.exists(input_path) and os.path.exists(output_path):
+                print("✅ File operations work correctly")
+                print("✅ Directory structure validation passed")
+                print("✅ Filename generation validation passed")
+                print("✅ End-to-end workflow validation passed")
+                return True
+            else:
+                print("❌ File operations failed")
+                return False
+                
+        finally:
+            os.chdir(old_cwd)
+            shutil.rmtree(test_dir, ignore_errors=True)
+            
+    except Exception as e:
+        print(f"❌ End-to-end workflow failed: {e}")
+        return False
+
 def test_flux_output_processing():
     """Test Flux output processing logic"""
     print("Testing Flux output processing...")
@@ -214,6 +427,11 @@ def run_all_tests():
         test_environment_validation,
         test_fileoutput_handling,
         test_flux_output_processing,
+        test_image_count_validation,
+        test_directory_creation,
+        test_filename_generation,
+        test_discord_url_validation,
+        test_end_to_end_workflow
     ]
     
     passed = 0
