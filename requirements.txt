@@ -1,0 +1,16 @@
+# Discord bot dependencies
+discord.py>=2.3.0
+
+# Environment management
+python-dotenv>=1.0.0
+
+# Async HTTP requests for AI APIs
+aiohttp>=3.8.0
+
+# Logging and utilities
+coloredlogs>=15.0
+
+# Future AI integration dependencies (commented for now)
+# openai>=1.0.0
+# Pillow>=10.0.0
+# requests>=2.31.0
