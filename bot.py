@@ -86,11 +86,15 @@ class FluxBot(commands.Bot):
             # Send initial processing message
             processing_msg = await message.reply("🎨 Processing your image modification request...")
             
-            # Save input image locally and use Discord URL directly
+            # Save input image locally and use local file for API
             input_filename = await self.save_input_image(image_attachment)
             
-            # Use Flux Kontext for image modification with Discord URL
-            await self.modify_image_with_flux(processing_msg, image_attachment.url, prompt, image_attachment.filename, input_filename)
+            if input_filename is None:
+                await processing_msg.edit(content="❌ Failed to download input image. Please try again.")
+                return
+            
+            # Use Flux Kontext for image modification with local file
+            await self.modify_image_with_flux(processing_msg, input_filename, prompt, image_attachment.filename)
             
         except Exception as e:
             print(f"Error in handle_image_modification: {e}")
@@ -145,53 +149,58 @@ class FluxBot(commands.Bot):
         
         return has_discord_domain and has_valid_extension
     
-    async def modify_image_with_flux(self, processing_msg, image_url, prompt, original_filename, input_filename):
+    async def modify_image_with_flux(self, processing_msg, input_filename, prompt, original_filename):
         """Use Flux Kontext to modify the image"""
         try:
-            # Prepare the input for Flux Kontext using Discord URL directly
-            input_data = {
-                "image": image_url,  # Use Discord CDN URL directly
-                "prompt": prompt,
-                "num_inference_steps": 20,
-                "guidance_scale": 3.5,
-                "num_outputs": 1,
-                "output_format": "png",
-                "output_quality": 90
-            }
+            # Construct full path to the input image file
+            input_path = os.path.join('images', 'inputs', input_filename)
             
-            await processing_msg.edit(content="🎨 Generating modified image with Flux AI...")
-            
-            # Run the Flux Kontext model
-            output = self.replicate_client.run(
-                "black-forest-labs/flux-kontext-max",
-                input=input_data
-            )
-            
-            # Download and save the generated image
-            if output:
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(str(output)) as resp:
-                        if resp.status == 200:
-                            modified_image_data = await resp.read()
-                            
-                            # Save output image locally
-                            output_filename = await self.save_output_image(modified_image_data, original_filename)
-                            
-                            # Create discord file and send
-                            modified_filename = f"modified_{original_filename}"
-                            discord_file = discord.File(
-                                io.BytesIO(modified_image_data), 
-                                filename=modified_filename
-                            )
-                            
-                            await processing_msg.edit(
-                                content=f"✅ Here's your modified image!\n**Prompt:** {prompt}\n**Input saved as:** {input_filename}\n**Output saved as:** {output_filename}",
-                                attachments=[discord_file]
-                            )
-                        else:
-                            await processing_msg.edit(content="❌ Failed to download the generated image.")
-            else:
-                await processing_msg.edit(content="❌ Failed to generate image. Please try again.")
+            # Open the local file for Replicate
+            with open(input_path, 'rb') as image_file:
+                # Prepare the input for Flux Kontext using local file
+                input_data = {
+                    "image": image_file,  # Use local file object
+                    "prompt": prompt,
+                    "num_inference_steps": 20,
+                    "guidance_scale": 3.5,
+                    "num_outputs": 1,
+                    "output_format": "png",
+                    "output_quality": 90
+                }
+                
+                await processing_msg.edit(content="🎨 Generating modified image with Flux AI...")
+                
+                # Run the Flux Kontext model
+                output = self.replicate_client.run(
+                    "black-forest-labs/flux-kontext-max",
+                    input=input_data
+                )
+                
+                # Download and save the generated image
+                if output:
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(str(output)) as resp:
+                            if resp.status == 200:
+                                modified_image_data = await resp.read()
+                                
+                                # Save output image locally
+                                output_filename = await self.save_output_image(modified_image_data, original_filename)
+                                
+                                # Create discord file and send
+                                modified_filename = f"modified_{original_filename}"
+                                discord_file = discord.File(
+                                    io.BytesIO(modified_image_data), 
+                                    filename=modified_filename
+                                )
+                                
+                                await processing_msg.edit(
+                                    content=f"✅ Here's your modified image!\n**Prompt:** {prompt}\n**Input saved as:** {input_filename}\n**Output saved as:** {output_filename}",
+                                    attachments=[discord_file]
+                                )
+                            else:
+                                await processing_msg.edit(content="❌ Failed to download the generated image.")
+                else:
+                    await processing_msg.edit(content="❌ Failed to generate image. Please try again.")
                 
         except Exception as e:
             print(f"Error in modify_image_with_flux: {e}")
