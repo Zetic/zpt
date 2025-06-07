@@ -119,9 +119,33 @@ class FluxBot(commands.Bot):
                 async with session.get(attachment.url) as resp:
                     if resp.status == 200:
                         image_data = await resp.read()
+                        
+                        # Validate that we received actual data
+                        if not image_data or len(image_data) == 0:
+                            print(f"Error: Downloaded image data is empty")
+                            return None
+                        
+                        # Validate minimum file size (at least 100 bytes for a valid image)
+                        if len(image_data) < 100:
+                            print(f"Error: Downloaded image data too small ({len(image_data)} bytes)")
+                            return None
+                        
                         with open(input_path, 'wb') as f:
                             f.write(image_data)
-                        print(f"Saved input image: {input_path}")
+                        
+                        # Verify the file was saved correctly
+                        if not os.path.exists(input_path):
+                            print(f"Error: Failed to save input image file")
+                            return None
+                        
+                        # Verify saved file size matches downloaded data
+                        saved_size = os.path.getsize(input_path)
+                        if saved_size != len(image_data):
+                            print(f"Error: Saved file size mismatch ({saved_size} != {len(image_data)})")
+                            os.remove(input_path)  # Clean up corrupted file
+                            return None
+                        
+                        print(f"Saved input image: {input_path} ({saved_size} bytes)")
                         return input_filename
                     else:
                         print(f"Failed to download input image: {resp.status}")
@@ -154,6 +178,19 @@ class FluxBot(commands.Bot):
         try:
             # Construct full path to the input image file
             input_path = os.path.join('images', 'inputs', input_filename)
+            
+            # Validate that the input file exists before processing
+            if not os.path.exists(input_path):
+                print(f"Error: Input file does not exist: {input_path}")
+                await processing_msg.edit(content="❌ Input image file not found. Please try again.")
+                return
+            
+            # Validate that the input file is not empty
+            file_size = os.path.getsize(input_path)
+            if file_size == 0:
+                print(f"Error: Input file is empty: {input_path}")
+                await processing_msg.edit(content="❌ Input image file is empty. Please try again.")
+                return
             
             # Open the local file for Replicate
             with open(input_path, 'rb') as image_file:
