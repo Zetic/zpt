@@ -99,6 +99,11 @@ class FluxBot(commands.Bot):
     async def save_input_image(self, attachment):
         """Save input image locally and return filename"""
         try:
+            # Validate Discord URL format
+            if not self.is_valid_discord_image_url(attachment.url):
+                print(f"Warning: Invalid Discord image URL format: {attachment.url}")
+                return None
+            
             # Generate timestamp-based filename
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             file_extension = os.path.splitext(attachment.filename)[1]
@@ -120,6 +125,25 @@ class FluxBot(commands.Bot):
         except Exception as e:
             print(f"Error saving input image: {e}")
             return None
+    
+    def is_valid_discord_image_url(self, url):
+        """Validate that the URL is a valid Discord image URL"""
+        discord_domains = [
+            'cdn.discordapp.com',
+            'media.discordapp.net',
+            'images-ext-1.discordapp.net',
+            'images-ext-2.discordapp.net'
+        ]
+        
+        valid_extensions = ['.png', '.jpg', '.jpeg', '.webp', '.gif']
+        
+        # Check if URL contains any Discord domain
+        has_discord_domain = any(domain in url for domain in discord_domains)
+        
+        # Check if URL ends with valid image extension
+        has_valid_extension = any(url.lower().endswith(ext) for ext in valid_extensions)
+        
+        return has_discord_domain and has_valid_extension
     
     async def modify_image_with_flux(self, processing_msg, image_url, prompt, original_filename, input_filename):
         """Use Flux Kontext to modify the image"""
@@ -199,14 +223,20 @@ async def help_flux(ctx):
 **🎨 Flux Image Modification Bot**
 
 **How to use:**
-1. Find a message with an image you want to modify
+1. Find a message with **exactly one image** you want to modify
 2. Reply to that message with your modification request
 3. @mention me in your reply with a description
 
 **Example:**
 Reply to an image with: `@FluxBot make the sky more dramatic and stormy`
 
-**Supported formats:** PNG, JPG, JPEG, WebP
+**Features:**
+✅ Supports PNG, JPG, JPEG, WebP formats
+✅ Uses Discord image URLs directly (faster processing)
+✅ Saves input and output images locally for traceability
+✅ Validates exactly one image per request
+✅ Timestamp-based file naming
+
 **Powered by:** Flux Kontext AI
     """
     await ctx.send(help_text)
