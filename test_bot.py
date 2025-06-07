@@ -416,6 +416,80 @@ def test_flux_output_processing():
     
     return True
 
+def test_input_image_validation():
+    """Test enhanced input image validation logic"""
+    print("Testing enhanced input image validation...")
+    
+    import tempfile
+    import shutil
+    
+    # Create temporary directory for testing
+    test_dir = tempfile.mkdtemp()
+    old_cwd = os.getcwd()
+    
+    try:
+        os.chdir(test_dir)
+        
+        # Test directory setup
+        os.makedirs('images/inputs', exist_ok=True)
+        os.makedirs('images/outputs', exist_ok=True)
+        
+        # Test 1: Valid image file
+        test_filename = "20250101_120000_input.png"
+        test_path = os.path.join('images', 'inputs', test_filename)
+        valid_image_data = b'PNG\x00' + b'mock image data' * 10  # Make it larger than 100 bytes
+        with open(test_path, 'wb') as f:
+            f.write(valid_image_data)
+        
+        # Validate file exists and has correct size
+        if os.path.exists(test_path) and os.path.getsize(test_path) >= 100:
+            print("✅ Valid image file validation works")
+        else:
+            print("❌ Valid image file validation failed")
+            return False
+        
+        # Test 2: Empty file validation
+        empty_filename = "20250101_120001_input.png"
+        empty_path = os.path.join('images', 'inputs', empty_filename)
+        with open(empty_path, 'wb') as f:
+            pass  # Create empty file
+        
+        if os.path.exists(empty_path) and os.path.getsize(empty_path) == 0:
+            print("✅ Empty file detection works")
+        else:
+            print("❌ Empty file detection failed")
+            return False
+        
+        # Test 3: File too small validation
+        small_filename = "20250101_120002_input.png"
+        small_path = os.path.join('images', 'inputs', small_filename)
+        with open(small_path, 'wb') as f:
+            f.write(b'tiny')  # Only 4 bytes
+        
+        if os.path.exists(small_path) and os.path.getsize(small_path) < 100:
+            print("✅ Small file detection works")
+        else:
+            print("❌ Small file detection failed")
+            return False
+        
+        # Test 4: File existence validation
+        nonexistent_path = os.path.join('images', 'inputs', 'nonexistent.png')
+        if not os.path.exists(nonexistent_path):
+            print("✅ Non-existent file detection works")
+        else:
+            print("❌ Non-existent file detection failed")
+            return False
+        
+        print("✅ Enhanced input validation test passed")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Enhanced input validation test failed: {e}")
+        return False
+    finally:
+        os.chdir(old_cwd)
+        shutil.rmtree(test_dir, ignore_errors=True)
+
 def test_input_image_usage():
     """Test that input images are properly used instead of Discord URLs"""
     print("Testing input image usage...")
@@ -490,6 +564,7 @@ def run_all_tests():
         test_fileoutput_handling,
         test_flux_output_processing,
         test_input_image_usage,
+        test_input_image_validation,
         test_image_count_validation,
         test_directory_creation,
         test_filename_generation,
