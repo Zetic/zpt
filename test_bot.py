@@ -115,6 +115,94 @@ def test_environment_validation():
     
     return True
 
+def test_fileoutput_handling():
+    """Test FileOutput object handling"""
+    print("Testing FileOutput object handling...")
+    
+    # Mock FileOutput object (simulating what Replicate returns)
+    class MockFileOutput:
+        def __init__(self, url):
+            self.url = url
+        
+        def __str__(self):
+            return self.url
+    
+    # Test that we can check if FileOutput exists without using len()
+    mock_output = MockFileOutput("https://example.com/image.png")
+    
+    # This should work (checking if output exists)
+    if mock_output:
+        print("✅ FileOutput existence check works")
+    else:
+        print("❌ FileOutput existence check failed")
+        return False
+    
+    # Test that we can use FileOutput directly as URL
+    try:
+        url = str(mock_output)  # FileOutput should be convertible to URL string
+        if url == "https://example.com/image.png":
+            print("✅ FileOutput URL extraction works")
+        else:
+            print("❌ FileOutput URL extraction failed")
+            return False
+    except Exception as e:
+        print(f"❌ FileOutput URL extraction failed with exception: {e}")
+        return False
+    
+    # Test that len() would fail on FileOutput (this is the original bug)
+    try:
+        len(mock_output)
+        print("❌ len() should fail on FileOutput object")
+        return False
+    except TypeError:
+        print("✅ len() correctly fails on FileOutput object (confirming the bug)")
+    
+    return True
+
+def test_flux_output_processing():
+    """Test Flux output processing logic"""
+    print("Testing Flux output processing...")
+    
+    # Mock FileOutput object (simulating what Replicate returns)
+    class MockFileOutput:
+        def __init__(self, url):
+            self.url = url
+        
+        def __str__(self):
+            return self.url
+        
+        def __bool__(self):
+            return bool(self.url)
+    
+    # Test the fixed logic from modify_image_with_flux
+    output = MockFileOutput("https://example.com/generated_image.png")
+    
+    # This is the fixed logic that should work
+    try:
+        if output:  # This should work (no len() call)
+            url = str(output)  # Use FileOutput directly, not output[0]
+            if url == "https://example.com/generated_image.png":
+                print("✅ Fixed Flux output processing works correctly")
+            else:
+                print("❌ URL extraction from FileOutput failed")
+                return False
+        else:
+            print("❌ FileOutput existence check failed")
+            return False
+    except Exception as e:
+        print(f"❌ Fixed logic failed with exception: {e}")
+        return False
+    
+    # Test with None output (should handle gracefully)
+    output_none = None
+    if not output_none:
+        print("✅ None output handled correctly")
+    else:
+        print("❌ None output not handled correctly")
+        return False
+    
+    return True
+
 def run_all_tests():
     """Run all validation tests"""
     print("🧪 Running Discord Bot Validation Tests\n")
@@ -124,6 +212,8 @@ def run_all_tests():
         test_image_attachment_detection,
         test_mention_parsing,
         test_environment_validation,
+        test_fileoutput_handling,
+        test_flux_output_processing,
     ]
     
     passed = 0

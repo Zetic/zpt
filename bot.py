@@ -111,9 +111,9 @@ class FluxBot(commands.Bot):
             )
             
             # Download the generated image
-            if output and len(output) > 0:
+            if output:
                 async with aiohttp.ClientSession() as session:
-                    async with session.get(output[0]) as resp:
+                    async with session.get(str(output)) as resp:
                         if resp.status == 200:
                             modified_image_data = await resp.read()
                             
