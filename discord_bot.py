@@ -13,9 +13,10 @@ import logging
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 import hashlib
 import json
+import io
 
 import discord
 from discord.ext import commands
@@ -23,6 +24,7 @@ import replicate
 import aiohttp
 import aiofiles
 from dotenv import load_dotenv
+from PIL import Image
 
 # Load environment variables
 load_dotenv()
@@ -53,6 +55,129 @@ Path(f"{IMAGES_FOLDER}/output").mkdir(parents=True, exist_ok=True)
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix='!', intents=intents)
+
+class OutputImage:
+    """Represents an output image with metadata"""
+    def __init__(self, image_path: str, prompt: str, filename: str):
+        self.image_path = image_path
+        self.prompt = prompt
+        self.filename = filename
+        self.image = None
+        
+    def load_image(self):
+        """Load the PIL Image object"""
+        if self.image is None and os.path.exists(self.image_path):
+            self.image = Image.open(self.image_path)
+        return self.image
+
+class ImageProcessingView(discord.ui.View):
+    """Interactive view for image processing with timeout handling"""
+    
+    def __init__(self, *, timeout=1800):  # 30 minutes timeout
+        super().__init__(timeout=timeout)
+        self.outputs: List[OutputImage] = []
+        self.message: Optional[discord.Message] = None
+        self.processing = False
+        
+    async def on_timeout(self):
+        """Handle view timeout - display all output images"""
+        # Disable all interactive components
+        for item in self.children:
+            item.disabled = True
+            
+        if not self.message:
+            return
+            
+        files = []
+        embeds = []
+        
+        try:
+            if not self.outputs:
+                # No outputs generated
+                embed = discord.Embed(
+                    title="🕒 Session Timed Out",
+                    description="No output images were generated during this session.",
+                    color=discord.Color.orange()
+                )
+                embeds.append(embed)
+            else:
+                # Create embeds and files for all outputs
+                for i, output in enumerate(self.outputs[:10]):  # Discord limit of 10 embeds
+                    try:
+                        # Load and prepare image
+                        img = output.load_image()
+                        if img:
+                            img_buffer = io.BytesIO()
+                            img.save(img_buffer, format='PNG')
+                            img_buffer.seek(0)
+                            
+                            file = discord.File(img_buffer, filename=output.filename)
+                            files.append(file)
+                            
+                            embed = discord.Embed(
+                                title=f"Final Output {i+1}/{len(self.outputs)} (Timed Out)",
+                                description=f"Prompt: {output.prompt[:100]}{'...' if len(output.prompt) > 100 else ''}",
+                                color=discord.Color.orange()
+                            )
+                            embed.set_image(url=f"attachment://{output.filename}")
+                            embeds.append(embed)
+                    except Exception as e:
+                        logger.error(f"Error preparing output {i}: {e}")
+                        
+                # Add info about additional outputs if more than 10
+                if len(self.outputs) > 10:
+                    info_embed = discord.Embed(
+                        title="Additional Outputs",
+                        description=f"Note: {len(self.outputs) - 10} additional output images were generated but cannot be displayed due to Discord's 10-embed limit.",
+                        color=discord.Color.blue()
+                    )
+                    embeds.insert(0, info_embed)
+                    
+            # Update the message
+            await self.message.edit(
+                content="🕒 **Timed out!** Here are all your output images:",
+                embeds=embeds,
+                attachments=files,
+                view=None
+            )
+            
+        except Exception as e:
+            logger.error(f"Error in timeout handler: {e}")
+            try:
+                await self.message.edit(
+                    content="🕒 Session timed out. An error occurred while displaying output images.",
+                    view=None
+                )
+            except:
+                pass
+                
+    def add_output(self, output_image: OutputImage):
+        """Add an output image to the session"""
+        self.outputs.append(output_image)
+        
+    @discord.ui.button(label='Process Image', style=discord.ButtonStyle.primary, emoji='🎨')
+    async def process_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Handle image processing button click"""
+        if self.processing:
+            await interaction.response.send_message("Already processing an image. Please wait...", ephemeral=True)
+            return
+            
+        await interaction.response.send_message("Image processing feature would be implemented here.", ephemeral=True)
+        
+    @discord.ui.button(label='View Outputs', style=discord.ButtonStyle.secondary, emoji='📂')
+    async def view_outputs_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Handle view outputs button click"""
+        if not self.outputs:
+            await interaction.response.send_message("No output images generated yet.", ephemeral=True)
+            return
+            
+        # Show current outputs (simplified for now)
+        embed = discord.Embed(
+            title="Current Outputs",
+            description=f"Generated {len(self.outputs)} output image(s) so far.",
+            color=discord.Color.blue()
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
 class ImageModificationBot:
     """Handles image modification using Replicate API"""
@@ -272,12 +397,45 @@ async def on_message(message):
         # Send the modified image back
         logger.info(f"Sending modified image: {modified_image_path}")
         
-        with open(modified_image_path, 'rb') as modified_file:
-            file = discord.File(modified_file, filename=f"modified_{image_attachment.filename}")
-            await processing_message.edit(
-                content=f"Here's your modified image with prompt: '{prompt}'",
-                attachments=[file]
+        # Create an OutputImage object
+        output_filename = f"modified_{image_attachment.filename}"
+        output_image = OutputImage(modified_image_path, prompt, output_filename)
+        
+        # Check if we should use interactive mode (for demonstration of timeout feature)
+        # For now, we'll use the simple mode but include the infrastructure
+        use_interactive = message.content.lower().find('interactive') != -1
+        
+        if use_interactive:
+            # Create and send an interactive view
+            view = ImageProcessingView()
+            view.add_output(output_image)
+            
+            # Create embed for the output
+            embed = discord.Embed(
+                title="Image Processing Complete",
+                description=f"Generated image with prompt: '{prompt}'",
+                color=discord.Color.green()
             )
+            
+            with open(modified_image_path, 'rb') as modified_file:
+                file = discord.File(modified_file, filename=output_filename)
+                embed.set_image(url=f"attachment://{output_filename}")
+                
+                view_message = await processing_message.edit(
+                    content="✅ **Image processed!** Use the buttons below to interact:",
+                    embed=embed,
+                    attachments=[file],
+                    view=view
+                )
+                view.message = view_message
+        else:
+            # Use the original simple mode
+            with open(modified_image_path, 'rb') as modified_file:
+                file = discord.File(modified_file, filename=output_filename)
+                await processing_message.edit(
+                    content=f"Here's your modified image with prompt: '{prompt}'",
+                    attachments=[file]
+                )
         
         logger.info("Image modification request completed successfully")
         
@@ -297,13 +455,13 @@ async def on_error(event, *args, **kwargs):
     """Handle bot errors"""
     logger.error(f"An error occurred in event {event}: {args}")
 
-@bot.command(name='help')
+@bot.command(name='bothelp')
 async def help_command(ctx):
     """Show help information"""
     help_text = """
 **Image Modification Bot Help**
 
-To use this bot:
+**Basic Usage:**
 1. Find a message with an image
 2. Reply to that message
 3. Mention me (@{bot_name}) in your reply
@@ -312,12 +470,71 @@ To use this bot:
 Example:
 `@{bot_name} Make the letters 3D and floating in space`
 
-The bot will download the image, process it using AI, and send back the modified version.
+**Interactive Mode:**
+Add the word "interactive" to your prompt to use the new interactive mode with timeout handling:
+`@{bot_name} interactive Make this image look futuristic`
 
+**Test Commands:**
+• `!test_timeout` - Test the timeout functionality with sample outputs
+• `!status` - Show bot status and configuration
+
+The bot will download the image, process it using AI, and send back the modified version.
 Both input and output images are saved for storage.
+
+**Interactive Sessions:**
+- Interactive sessions timeout after 30 minutes
+- When a session times out, all generated output images are automatically displayed
+- Use the buttons to interact with ongoing sessions
     """.format(bot_name=bot.user.name if bot.user else "Bot")
     
     await ctx.send(help_text)
+
+@bot.command(name='test_timeout')
+async def test_timeout_command(ctx):
+    """Test the timeout functionality with sample outputs"""
+    logger.info(f"Testing timeout functionality for user {ctx.author}")
+    
+    # Create a view with a short timeout for testing (30 seconds)
+    view = ImageProcessingView(timeout=30.0)
+    
+    # Create some sample output images for demonstration
+    try:
+        # Create a sample image in memory
+        sample_img = Image.new('RGB', (100, 100), color='red')
+        
+        # Save to temporary location
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        sample_path = f"{IMAGES_FOLDER}/output/sample_{timestamp}.png"
+        sample_img.save(sample_path)
+        
+        # Create OutputImage objects
+        output1 = OutputImage(sample_path, "Sample prompt 1", f"sample1_{timestamp}.png")
+        output2 = OutputImage(sample_path, "Sample prompt 2 with a much longer description that will be truncated", f"sample2_{timestamp}.png")
+        
+        view.add_output(output1)
+        view.add_output(output2)
+        
+        # Create initial embed
+        embed = discord.Embed(
+            title="🧪 Timeout Test Session",
+            description="This interactive session will timeout in 30 seconds.\nAfter timeout, all output images will be displayed automatically.",
+            color=discord.Color.blue()
+        )
+        embed.add_field(
+            name="Instructions", 
+            value="Wait 30 seconds to see the timeout behavior, or use the buttons to interact.",
+            inline=False
+        )
+        
+        # Send with the view
+        message = await ctx.send(embed=embed, view=view)
+        view.message = message
+        
+        logger.info("Test timeout session created successfully")
+        
+    except Exception as e:
+        logger.error(f"Error creating test timeout session: {e}")
+        await ctx.send("Error creating test session. Please check the logs.")
 
 @bot.command(name='status')
 async def status_command(ctx):
