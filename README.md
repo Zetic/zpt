@@ -6,6 +6,7 @@ A Discord bot that uses Replicate API to modify images using AI. The bot respond
 
 - Reply to images in Discord with AI-powered modifications
 - Uses Replicate's flux-kontext-max model for image transformation
+- **Voice Connect**: Speech-to-speech interaction using OpenAI's GPT-4o Realtime API
 - Comprehensive logging and error handling
 - Automatic image storage (input and output)
 - Configurable file size limits and channel restrictions
@@ -18,6 +19,8 @@ A Discord bot that uses Replicate API to modify images using AI. The bot respond
 - Python 3.8 or higher
 - Discord Bot Token
 - Replicate API Token
+- OpenAI API Key (for voice features)
+- FFmpeg installed (for voice features)
 
 ### Installation
 
@@ -36,6 +39,7 @@ cp .env.example .env
 ```bash
 DISCORD_BOT_TOKEN=your_discord_bot_token_here
 REPLICATE_API_TOKEN=your_replicate_api_token_here
+OPENAI_API_KEY=your_openai_api_key_here
 ```
 
 4. Run the startup script:
@@ -53,6 +57,8 @@ python discord_bot.py
 
 ## Usage
 
+### Image Modification
+
 1. In Discord, find a message with an image
 2. Reply to that message
 3. Mention the bot (@bot_name) in your reply
@@ -69,26 +75,49 @@ The bot will:
 3. Save both input and output images
 4. Send the modified image back to Discord
 
+### Voice Connect (Speech-to-Speech)
+
+The bot supports real-time voice interaction using OpenAI's GPT-4o Realtime API:
+
+1. Join a voice channel in Discord
+2. Use the `/connect` slash command
+3. Start speaking - the bot will listen and respond
+4. Use `/disconnect` to end the session
+
+The bot will:
+- Listen continuously to speech in the voice channel
+- Send audio to OpenAI's GPT-4o Realtime API
+- Play back AI-generated speech responses
+- Handle turn-taking automatically using voice activity detection
+
 ## Configuration
 
 Environment variables in `.env`:
 
 - `DISCORD_BOT_TOKEN`: Your Discord bot token (required)
 - `REPLICATE_API_TOKEN`: Your Replicate API token (required)
+- `OPENAI_API_KEY`: Your OpenAI API key (required for voice features)
 - `ALLOWED_CHANNEL_ID`: Restrict bot to specific channel (optional)
 - `IMAGES_FOLDER`: Directory for storing images (default: ./images)
 - `MAX_FILE_SIZE_MB`: Maximum file size in MB (default: 25)
 
 ## Commands
 
-- `!help`: Show usage instructions
+### Text Commands
+- `!bothelp`: Show usage instructions
 - `!status`: Display bot status and configuration
+- `!test_timeout`: Test the timeout functionality
+
+### Slash Commands
+- `/connect`: Join your voice channel and start speech-to-speech interaction
+- `/disconnect`: Leave the voice channel and end the speech session
 
 ## File Structure
 
 ```
 zpt/
 ├── discord_bot.py          # Main bot code
+├── voice_connect.py        # Voice connect module
 ├── requirements.txt        # Python dependencies
 ├── start_bot.sh           # Startup script
 ├── .env.example           # Environment template
@@ -106,8 +135,8 @@ zpt/
 2. Create a new application
 3. Go to "Bot" section
 4. Create a bot and copy the token
-5. Enable necessary intents (Message Content Intent)
-6. Invite bot to your server with appropriate permissions
+5. Enable necessary intents (Message Content Intent, Voice State Intent)
+6. Invite bot to your server with appropriate permissions (including voice permissions)
 
 ### Replicate API Token
 
@@ -116,6 +145,15 @@ zpt/
 3. Go to your account settings
 4. Generate an API token
 5. Copy the token (starts with `r8_`)
+
+### OpenAI API Key
+
+1. Go to https://platform.openai.com
+2. Sign up/log in
+3. Go to API keys section
+4. Create a new API key
+5. Copy the key (starts with `sk-`)
+6. Note: GPT-4o Realtime API requires appropriate API access
 
 ## Logging
 
@@ -133,6 +171,8 @@ The bot provides comprehensive logging:
 2. **API errors**: Verify your Replicate API token and account credits
 3. **Image download fails**: Check image URL accessibility and file size
 4. **Permission errors**: Ensure bot has necessary Discord permissions
+5. **Voice not working**: Ensure PyNaCl is installed and FFmpeg is in PATH
+6. **OpenAI connection fails**: Verify OPENAI_API_KEY and API access
 
 ### Debug Mode
 
@@ -145,7 +185,7 @@ logging.basicConfig(level=logging.DEBUG, ...)
 
 - Never commit your `.env` file with actual tokens
 - Keep your API tokens secure and rotate them regularly
-- Monitor your Replicate API usage and costs
+- Monitor your Replicate and OpenAI API usage and costs
 - Restrict bot usage to specific channels if needed
 
 ## Dependencies
@@ -157,6 +197,8 @@ logging.basicConfig(level=logging.DEBUG, ...)
 - `Pillow`: Image processing utilities
 - `aiohttp`: Async HTTP client
 - `aiofiles`: Async file operations
+- `PyNaCl`: Voice support for Discord
+- `websockets`: WebSocket client for OpenAI Realtime API
 
 ## License
 

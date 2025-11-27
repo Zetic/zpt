@@ -54,6 +54,7 @@ Path(f"{IMAGES_FOLDER}/output").mkdir(parents=True, exist_ok=True)
 # Discord bot setup
 intents = discord.Intents.default()
 intents.message_content = True
+intents.voice_states = True  # Enable voice state tracking for voice connect feature
 bot = commands.Bot(command_prefix='!', intents=intents)
 
 class OutputImage:
@@ -305,6 +306,20 @@ async def on_ready():
     # Setup the image bot
     await image_bot.setup()
     
+    # Load voice connect cog
+    try:
+        await bot.load_extension("voice_connect")
+        logger.info("Voice connect extension loaded successfully")
+    except Exception as e:
+        logger.warning(f"Failed to load voice connect extension: {e}")
+    
+    # Sync slash commands
+    try:
+        synced = await bot.tree.sync()
+        logger.info(f"Synced {len(synced)} slash command(s)")
+    except Exception as e:
+        logger.error(f"Failed to sync slash commands: {e}")
+    
     # Log configuration
     logger.info(f"Images folder: {IMAGES_FOLDER}")
     logger.info(f"Max file size: {MAX_FILE_SIZE_MB}MB")
@@ -473,6 +488,10 @@ Example:
 **Interactive Mode:**
 Add the word "interactive" to your prompt to use the new interactive mode with timeout handling:
 `@{bot_name} interactive Make this image look futuristic`
+
+**Voice Commands:**
+• `/connect` - Join your voice channel and start speech-to-speech interaction using OpenAI
+• `/disconnect` - Leave the voice channel and end the speech session
 
 **Test Commands:**
 • `!test_timeout` - Test the timeout functionality with sample outputs
