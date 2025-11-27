@@ -27,13 +27,13 @@ def test_audio_buffer():
         result = await buffer.get()
         assert result is None, "Empty buffer should return None"
         
-        # Add some data
-        await buffer.add(b'x' * 50)
+        # Test sync add
+        buffer.add_sync(b'x' * 50)
         result = await buffer.get()
         assert result is None, "Not enough data should return None"
         
         # Add more data to exceed minimum
-        await buffer.add(b'y' * 60)
+        buffer.add_sync(b'y' * 60)
         result = await buffer.get()
         assert result is not None, "Should return data when min_size exceeded"
         assert len(result) == 110, f"Should return all buffered data, got {len(result)}"
@@ -42,13 +42,18 @@ def test_audio_buffer():
         result = await buffer.get()
         assert result is None, "Buffer should be empty after get()"
         
+        # Test async add
+        await buffer.add(b'a' * 120)
+        result = await buffer.get()
+        assert result is not None and len(result) == 120, "Async add should work"
+        
         # Test flush
-        await buffer.add(b'z' * 30)
+        buffer.add_sync(b'z' * 30)
         result = await buffer.flush()
         assert len(result) == 30, "Flush should return all data"
         
         # Test clear
-        await buffer.add(b'w' * 50)
+        buffer.add_sync(b'w' * 50)
         await buffer.clear()
         result = await buffer.flush()
         assert len(result) == 0, "Buffer should be empty after clear()"

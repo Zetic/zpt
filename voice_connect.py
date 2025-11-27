@@ -28,7 +28,8 @@ logger = logging.getLogger(__name__)
 
 # Configuration
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
-OPENAI_REALTIME_URL = "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01"
+OPENAI_REALTIME_MODEL = os.getenv('OPENAI_REALTIME_MODEL', 'gpt-4o-realtime-preview-2024-10-01')
+OPENAI_REALTIME_URL = f"wss://api.openai.com/v1/realtime?model={OPENAI_REALTIME_MODEL}"
 
 # Audio settings for OpenAI Realtime API
 # OpenAI expects PCM16 audio at 24kHz mono
@@ -47,33 +48,43 @@ class AudioBuffer:
     def __init__(self, min_size: int = 4800):
         self._buffer = bytearray()
         self._lock = asyncio.Lock()
+        self._sync_lock = __import__('threading').Lock()
         self.min_size = min_size  # Minimum bytes to accumulate before sending
     
-    async def add(self, data: bytes) -> None:
-        """Add audio data to the buffer."""
-        async with self._lock:
+    def add_sync(self, data: bytes) -> None:
+        """Add audio data to the buffer (thread-safe, called from sync code)."""
+        with self._sync_lock:
             self._buffer.extend(data)
+    
+    async def add(self, data: bytes) -> None:
+        """Add audio data to the buffer (async version)."""
+        async with self._lock:
+            with self._sync_lock:
+                self._buffer.extend(data)
     
     async def get(self) -> Optional[bytes]:
         """Get buffered audio if sufficient data is available."""
         async with self._lock:
-            if len(self._buffer) >= self.min_size:
-                data = bytes(self._buffer)
-                self._buffer.clear()
-                return data
-            return None
+            with self._sync_lock:
+                if len(self._buffer) >= self.min_size:
+                    data = bytes(self._buffer)
+                    self._buffer.clear()
+                    return data
+                return None
     
     async def flush(self) -> bytes:
         """Get all remaining buffered audio."""
         async with self._lock:
-            data = bytes(self._buffer)
-            self._buffer.clear()
-            return data
+            with self._sync_lock:
+                data = bytes(self._buffer)
+                self._buffer.clear()
+                return data
     
     async def clear(self) -> None:
         """Clear the buffer."""
         async with self._lock:
-            self._buffer.clear()
+            with self._sync_lock:
+                self._buffer.clear()
 
 
 class OpenAIAudioSource(discord.AudioSource):
@@ -370,16 +381,17 @@ class VoiceSession:
     def receive_audio(self, pcm_data: bytes) -> None:
         """
         Receive audio data from Discord voice.
-        This is called when audio is received from users in the voice channel.
+        This is called synchronously when audio is received from users in the voice channel.
+        Uses thread-safe sync method to avoid creating async tasks for each packet.
         """
-        # Queue the audio for async processing
-        asyncio.create_task(self.audio_buffer.add(pcm_data))
+        self.audio_buffer.add_sync(pcm_data)
 
 
-class VoiceSink(discord.AudioSink if hasattr(discord, 'AudioSink') else object):
+class VoiceSink:
     """
     Audio sink for receiving voice data from Discord.
-    Note: This requires voice receive capability in discord.py
+    Note: This requires voice receive capability in discord.py or Pycord.
+    Standard discord.py doesn't have native voice receive, but Pycord does.
     """
     
     def __init__(self, session: VoiceSession):
@@ -468,14 +480,39 @@ class VoiceConnectCog(commands.Cog):
             # Store the session
             self.sessions[guild_id] = session
             
-            # Note: Voice receiving requires special handling with discord.py
-            # The bot will now listen for audio using the voice receive extension if available
+            # Attempt to set up voice receiving if the library supports it
+            # Note: Standard discord.py doesn't have native voice receive.
+            # For full voice receive support, use Pycord or discord-ext-voice-recv.
+            voice_receive_enabled = False
+            if hasattr(voice_client, 'listen'):
+                # Pycord-style voice receive
+                try:
+                    sink = VoiceSink(session)
+                    voice_client.listen(sink)
+                    voice_receive_enabled = True
+                    logger.info("Voice receive enabled using Pycord-style API")
+                except Exception as e:
+                    logger.warning(f"Failed to enable voice receive: {e}")
+            elif hasattr(voice_client, 'start_recording'):
+                # Alternative voice receive API
+                try:
+                    sink = VoiceSink(session)
+                    voice_client.start_recording(sink, lambda e: None)
+                    voice_receive_enabled = True
+                    logger.info("Voice receive enabled using start_recording API")
+                except Exception as e:
+                    logger.warning(f"Failed to enable voice receive: {e}")
             
-            await interaction.followup.send(
-                f"✅ Connected to **{voice_channel.name}**!\n\n"
-                "🎙️ I'm now listening. Speak naturally and I'll respond.\n"
-                "Use `/disconnect` to end the session."
-            )
+            status_msg = f"✅ Connected to **{voice_channel.name}**!\n\n"
+            if voice_receive_enabled:
+                status_msg += "🎙️ I'm now listening. Speak naturally and I'll respond.\n"
+            else:
+                status_msg += ("⚠️ Voice receive is not available with this discord.py version.\n"
+                              "For full voice input support, install Pycord or discord-ext-voice-recv.\n"
+                              "Audio output is still available.\n")
+            status_msg += "Use `/disconnect` to end the session."
+            
+            await interaction.followup.send(status_msg)
             
             logger.info(f"Connected to voice channel {voice_channel.name} in guild {guild_id}")
             
